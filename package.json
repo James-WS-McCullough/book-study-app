@@ -1,0 +1,49 @@
+{
+  "name": "study-hub",
+  "productName": "Study Hub",
+  "version": "1.0.0",
+  "description": "An Electron app to help you study books by dividing PDFs into daily reading sections",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "dev": "electron . --enable-logging",
+    "build": "electron-builder",
+    "build:mac": "electron-builder --mac",
+    "build:win": "electron-builder --win",
+    "build:linux": "electron-builder --linux"
+  },
+  "keywords": ["electron", "pdf", "study", "reading"],
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "electron": "^28.0.0",
+    "electron-builder": "^24.9.1"
+  },
+  "dependencies": {
+    "pdfjs-dist": "^4.0.379"
+  },
+  "build": {
+    "appId": "com.studyhub.app",
+    "productName": "Study Hub",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "**/*",
+      "!dist/**"
+    ],
+    "mac": {
+      "category": "public.app-category.education",
+      "icon": "build/icon.icns",
+      "target": ["dmg", "zip"]
+    },
+    "win": {
+      "icon": "build/icon.png",
+      "target": ["nsis", "portable"]
+    },
+    "linux": {
+      "icon": "build/icon.png",
+      "target": ["AppImage", "deb"]
+    }
+  }
+}

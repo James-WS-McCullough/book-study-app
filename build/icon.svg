@@ -1,0 +1,42 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <defs>
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#1a1a2e"/>
+      <stop offset="100%" style="stop-color:#16213e"/>
+    </linearGradient>
+    <linearGradient id="bookGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#e94560"/>
+      <stop offset="100%" style="stop-color:#ff6b6b"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Blue background -->
+  <rect width="512" height="512" fill="url(#bgGrad)"/>
+
+  <!-- Open book base -->
+  <path d="M256 100 L256 400 Q180 375 80 390 L80 120 Q180 105 256 130 Z"
+        fill="#eaeaea" opacity="0.95"/>
+  <path d="M256 100 L256 400 Q332 375 432 390 L432 120 Q332 105 256 130 Z"
+        fill="#d0d0d0" opacity="0.95"/>
+
+  <!-- Book spine shadow -->
+  <path d="M256 100 L256 400" stroke="#a0a0a0" stroke-width="4" opacity="0.5"/>
+
+  <!-- Page lines left -->
+  <line x1="110" y1="160" x2="220" y2="175" stroke="#a0a0a0" stroke-width="4" stroke-linecap="round"/>
+  <line x1="110" y1="200" x2="220" y2="215" stroke="#a0a0a0" stroke-width="4" stroke-linecap="round"/>
+  <line x1="110" y1="240" x2="220" y2="255" stroke="#a0a0a0" stroke-width="4" stroke-linecap="round"/>
+  <line x1="110" y1="280" x2="220" y2="295" stroke="#a0a0a0" stroke-width="4" stroke-linecap="round"/>
+  <line x1="110" y1="320" x2="180" y2="332" stroke="#a0a0a0" stroke-width="4" stroke-linecap="round"/>
+
+  <!-- Page lines right -->
+  <line x1="292" y1="175" x2="402" y2="160" stroke="#a0a0a0" stroke-width="4" stroke-linecap="round"/>
+  <line x1="292" y1="215" x2="402" y2="200" stroke="#a0a0a0" stroke-width="4" stroke-linecap="round"/>
+  <line x1="292" y1="255" x2="402" y2="240" stroke="#a0a0a0" stroke-width="4" stroke-linecap="round"/>
+  <line x1="292" y1="295" x2="402" y2="280" stroke="#a0a0a0" stroke-width="4" stroke-linecap="round"/>
+  <line x1="292" y1="335" x2="350" y2="322" stroke="#a0a0a0" stroke-width="4" stroke-linecap="round"/>
+
+  <!-- Bookmark ribbon -->
+  <path d="M256 100 L256 180 L240 160 L256 180 L272 160 L256 180"
+        stroke="url(#bookGrad)" stroke-width="12" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>
