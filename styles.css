@@ -296,6 +296,18 @@ body {
   color: #1a1a2e;
 }
 
+.book-card .on-break {
+  display: inline-block;
+  padding: 4px 8px;
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-weight: 500;
+  margin-top: 8px;
+}
+
 /* Loading State */
 .loading-state {
   display: flex;
@@ -665,6 +677,172 @@ body {
   max-width: 400px;
 }
 
+.modal-large {
+  max-width: 800px;
+}
+
+/* Schedule Calendar */
+.schedule-calendar {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.calendar-month {
+  background: var(--bg-tertiary);
+  border-radius: 12px;
+  padding: 16px;
+}
+
+.calendar-month-header {
+  font-size: 1.1rem;
+  font-weight: 600;
+  margin-bottom: 12px;
+  color: var(--text-primary);
+}
+
+.calendar-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 4px;
+}
+
+.calendar-day-header {
+  text-align: center;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  padding: 8px 4px;
+}
+
+.calendar-day {
+  aspect-ratio: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  font-size: 0.85rem;
+  padding: 4px;
+  min-height: 60px;
+}
+
+.calendar-day.empty {
+  background: transparent;
+}
+
+.calendar-day.past {
+  background: var(--bg-secondary);
+  opacity: 0.5;
+}
+
+.calendar-day.today {
+  background: var(--accent);
+  color: white;
+}
+
+.calendar-day.future {
+  background: var(--bg-secondary);
+}
+
+.calendar-day.weekend {
+  background: var(--bg-primary);
+  border: 1px dashed var(--border);
+}
+
+.calendar-day.weekend .day-label {
+  color: var(--text-secondary);
+}
+
+.calendar-day.completed {
+  background: var(--success);
+  color: #1a1a2e;
+}
+
+.calendar-day .day-number {
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+
+.calendar-day .day-pages {
+  font-size: 0.7rem;
+  margin-top: 2px;
+  opacity: 0.8;
+}
+
+.calendar-day .day-label {
+  font-size: 0.65rem;
+  margin-top: 2px;
+  text-transform: uppercase;
+}
+
+.calendar-legend {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+  padding: 12px 0;
+  border-top: 1px solid var(--border);
+  margin-top: 8px;
+}
+
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+}
+
+.legend-color {
+  width: 16px;
+  height: 16px;
+  border-radius: 4px;
+}
+
+.legend-color.today {
+  background: var(--accent);
+}
+
+.legend-color.completed {
+  background: var(--success);
+}
+
+.legend-color.future {
+  background: var(--bg-secondary);
+}
+
+.legend-color.weekend {
+  background: var(--bg-primary);
+  border: 1px dashed var(--border);
+}
+
+/* Calendar button in progress card */
+.progress-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+}
+
+.schedule-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text-secondary);
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.schedule-btn:hover {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: white;
+}
+
 /* Completion Modal */
 .completion-modal {
   text-align: center;
@@ -786,6 +964,55 @@ body {
 
 .form-group input:focus {
   outline: none;
+  border-color: var(--accent);
+}
+
+/* Checkbox styling */
+.checkbox-group {
+  margin-top: 8px;
+}
+
+.checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+  font-size: 0.95rem;
+  color: var(--text-primary);
+}
+
+.checkbox-label input[type="checkbox"] {
+  display: none;
+}
+
+.checkbox-custom {
+  width: 20px;
+  height: 20px;
+  border: 2px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg-tertiary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+}
+
+.checkbox-label input[type="checkbox"]:checked + .checkbox-custom {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.checkbox-label input[type="checkbox"]:checked + .checkbox-custom::after {
+  content: '';
+  width: 6px;
+  height: 10px;
+  border: solid white;
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+  margin-bottom: 2px;
+}
+
+.checkbox-label:hover .checkbox-custom {
   border-color: var(--accent);
 }
 
@@ -949,6 +1176,24 @@ body {
   padding: 20px;
   text-align: center;
   color: var(--text-secondary);
+}
+
+/* Backup actions */
+.backup-actions {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.backup-actions .secondary-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.backup-actions .secondary-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 
 .no-voices-message.hidden {

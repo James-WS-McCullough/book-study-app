@@ -122,6 +122,28 @@
               <p>No books in your library yet.</p>
             </div>
           </div>
+          <div class="settings-section">
+            <h3>Backup & Transfer</h3>
+            <p class="settings-description">Export your library to transfer between devices or create a backup. The export includes all books, PDFs, covers, and reading progress.</p>
+            <div class="backup-actions">
+              <button id="exportLibraryBtn" class="secondary-btn">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                  <polyline points="17 8 12 3 7 8"></polyline>
+                  <line x1="12" y1="3" x2="12" y2="15"></line>
+                </svg>
+                Export Library
+              </button>
+              <button id="importLibraryBtn" class="secondary-btn">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                  <polyline points="7 10 12 15 17 10"></polyline>
+                  <line x1="12" y1="15" x2="12" y2="3"></line>
+                </svg>
+                Import Library
+              </button>
+            </div>
+          </div>
         </div>
       </section>
 
@@ -200,8 +222,8 @@
             </button>
             <button id="toggleSpeedReadBtn" class="icon-btn" title="Toggle Speed Reading (S)">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <circle cx="12" cy="12" r="10"></circle>
-                <polyline points="12 6 12 12 16 14"></polyline>
+                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+                <circle cx="12" cy="12" r="3"></circle>
               </svg>
             </button>
             <button id="readerDarkMode" class="icon-btn" title="Toggle Dark Mode">
@@ -325,6 +347,21 @@
       </div>
     </div>
 
+    <!-- Reading Schedule Modal -->
+    <div id="scheduleModal" class="modal">
+      <div class="modal-content modal-large">
+        <div class="modal-header">
+          <h3 id="scheduleModalTitle">Reading Schedule</h3>
+          <button class="modal-close" data-close-schedule>&times;</button>
+        </div>
+        <div class="modal-body">
+          <div id="scheduleCalendar" class="schedule-calendar">
+            <!-- Calendar will be rendered here -->
+          </div>
+        </div>
+      </div>
+    </div>
+
     <!-- Add Book Modal -->
     <div id="addBookModal" class="modal">
       <div class="modal-content">
@@ -350,6 +387,13 @@
           <div class="form-group">
             <label for="targetDate">Target Completion Date</label>
             <input type="date" id="targetDate">
+          </div>
+          <div class="form-group checkbox-group">
+            <label class="checkbox-label">
+              <input type="checkbox" id="weekdaysOnly">
+              <span class="checkbox-custom"></span>
+              Weekdays only (Mon-Fri)
+            </label>
           </div>
           <div id="planPreview" class="plan-preview hidden">
             <h4>Reading Plan Preview</h4>

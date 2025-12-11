@@ -131,6 +131,7 @@ const elements = {
   selectedFileName: document.getElementById('selectedFileName'),
   bookTitle: document.getElementById('bookTitle'),
   targetDate: document.getElementById('targetDate'),
+  weekdaysOnly: document.getElementById('weekdaysOnly'),
   planPreview: document.getElementById('planPreview'),
   planDetails: document.getElementById('planDetails'),
   createPlanBtn: document.getElementById('createPlanBtn'),
@@ -139,7 +140,14 @@ const elements = {
 
   // Settings
   booksManagementList: document.getElementById('books-management-list'),
-  noBooksMessage: document.getElementById('no-books-message')
+  noBooksMessage: document.getElementById('no-books-message'),
+  exportLibraryBtn: document.getElementById('exportLibraryBtn'),
+  importLibraryBtn: document.getElementById('importLibraryBtn'),
+
+  // Schedule modal
+  scheduleModal: document.getElementById('scheduleModal'),
+  scheduleModalTitle: document.getElementById('scheduleModalTitle'),
+  scheduleCalendar: document.getElementById('scheduleCalendar')
 };
 
 // Initialize
@@ -253,6 +261,7 @@ function setupEventListeners() {
   elements.addBookBtn.addEventListener('click', openAddBookModal);
   elements.selectPdfBtn.addEventListener('click', selectPdf);
   elements.targetDate.addEventListener('change', updatePlanPreview);
+  elements.weekdaysOnly.addEventListener('change', updatePlanPreview);
   elements.createPlanBtn.addEventListener('click', createStudyPlan);
 
   // Modal close
@@ -261,6 +270,14 @@ function setupEventListeners() {
   });
   elements.addBookModal.addEventListener('click', (e) => {
     if (e.target === elements.addBookModal) closeAddBookModal();
+  });
+
+  // Schedule modal close
+  document.querySelectorAll('[data-close-schedule]').forEach(btn => {
+    btn.addEventListener('click', closeScheduleModal);
+  });
+  elements.scheduleModal.addEventListener('click', (e) => {
+    if (e.target === elements.scheduleModal) closeScheduleModal();
   });
 
   // Reader
@@ -305,6 +322,10 @@ function setupEventListeners() {
   // Load available voices
   loadVoices();
   speechSynthesis.onvoiceschanged = loadVoices;
+
+  // Backup & Transfer
+  elements.exportLibraryBtn.addEventListener('click', exportLibrary);
+  elements.importLibraryBtn.addEventListener('click', importLibrary);
 
   // Daily complete modal
   elements.continueReadingBtn.addEventListener('click', closeDailyCompleteModal);
@@ -940,18 +961,21 @@ function populateVoiceDropdown() {
   });
 }
 
-// Load configured voices from localStorage
+// Load configured voices from app data
 function loadConfiguredVoices() {
-  const saved = localStorage.getItem('configuredVoices');
-  if (saved) {
-    configuredVoices = JSON.parse(saved);
+  if (appData.settings && appData.settings.configuredVoices) {
+    configuredVoices = appData.settings.configuredVoices;
   }
   renderConfiguredVoices();
 }
 
-// Save configured voices to localStorage
-function saveConfiguredVoices() {
-  localStorage.setItem('configuredVoices', JSON.stringify(configuredVoices));
+// Save configured voices to app data
+async function saveConfiguredVoices() {
+  if (!appData.settings) {
+    appData.settings = {};
+  }
+  appData.settings.configuredVoices = configuredVoices;
+  await window.electronAPI.saveData(appData);
 }
 
 // Add a new configured voice
@@ -1169,10 +1193,11 @@ function createBookCard(book) {
 
   const progress = calculateProgress(book);
   const goal = getOrCreateDailyGoal(book);
-  const todayComplete = goal ? book.maxPageReached >= goal.endPage : false;
 
   let statusBadge = '';
-  if (todayComplete) {
+  if (goal && goal.isWeekendBreak) {
+    statusBadge = '<div class="on-break">On break</div>';
+  } else if (goal && book.maxPageReached >= goal.endPage) {
     statusBadge = '<div class="today-complete">Today\'s reading complete</div>';
   } else if (goal) {
     const isOverdue = goal.startPage > 1 && book.maxPageReached < goal.startPage - 1;
@@ -1231,8 +1256,17 @@ function createProgressCard(book) {
     <div class="progress-card-header">
       <div>
         <h4>${book.title}</h4>
-        <div class="target-date">Target: ${formatDate(book.targetDate)}</div>
+        <div class="target-date">Target: ${formatDate(book.targetDate)}${book.weekdaysOnly ? ' (weekdays only)' : ''}</div>
       </div>
+      <button class="schedule-btn" data-book-id="${book.id}">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
+          <line x1="16" y1="2" x2="16" y2="6"></line>
+          <line x1="8" y1="2" x2="8" y2="6"></line>
+          <line x1="3" y1="10" x2="21" y2="10"></line>
+        </svg>
+        Schedule
+      </button>
     </div>
     <div class="progress-stats">
       <div class="stat">
@@ -1256,6 +1290,10 @@ function createProgressCard(book) {
       <div class="progress-fill" style="width: ${progress.percent}%"></div>
     </div>
   `;
+
+  // Add event listener for schedule button
+  const scheduleBtn = card.querySelector('.schedule-btn');
+  scheduleBtn.addEventListener('click', () => openScheduleModal(book));
 
   return card;
 }
@@ -1349,6 +1387,81 @@ async function removeBook(bookId) {
   renderProgress();
 }
 
+// Export library
+async function exportLibrary() {
+  const btn = elements.exportLibraryBtn;
+  const originalText = btn.innerHTML;
+  btn.innerHTML = `
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+      <polyline points="17 8 12 3 7 8"></polyline>
+      <line x1="12" y1="3" x2="12" y2="15"></line>
+    </svg>
+    Exporting...
+  `;
+  btn.disabled = true;
+
+  try {
+    const result = await window.electronAPI.exportLibrary();
+
+    if (result.success) {
+      const sizeMB = (result.size / (1024 * 1024)).toFixed(2);
+      alert(`Library exported successfully!\n\nSize: ${sizeMB} MB\nLocation: ${result.path}`);
+    } else if (result.reason !== 'cancelled') {
+      alert(`Export failed: ${result.error || 'Unknown error'}`);
+    }
+  } catch (error) {
+    console.error('Export error:', error);
+    alert(`Export failed: ${error.message}`);
+  }
+
+  btn.innerHTML = originalText;
+  btn.disabled = false;
+}
+
+// Import library
+async function importLibrary() {
+  const btn = elements.importLibraryBtn;
+  const originalText = btn.innerHTML;
+  btn.innerHTML = `
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+      <polyline points="7 10 12 15 17 10"></polyline>
+      <line x1="12" y1="15" x2="12" y2="3"></line>
+    </svg>
+    Importing...
+  `;
+  btn.disabled = true;
+
+  try {
+    const result = await window.electronAPI.importLibrary();
+
+    if (result.success) {
+      // Reload app data
+      appData = await window.electronAPI.loadData();
+
+      // Re-render all views
+      renderLibrary();
+      renderProgress();
+      renderSettings();
+
+      let message = `Import complete!\n\nBooks imported: ${result.imported}`;
+      if (result.skipped > 0) {
+        message += `\nBooks skipped (already exist): ${result.skipped}`;
+      }
+      alert(message);
+    } else if (result.reason !== 'cancelled') {
+      alert(`Import failed: ${result.error || 'Unknown error'}`);
+    }
+  } catch (error) {
+    console.error('Import error:', error);
+    alert(`Import failed: ${error.message}`);
+  }
+
+  btn.innerHTML = originalText;
+  btn.disabled = false;
+}
+
 // Modal Functions
 function openAddBookModal() {
   resetAddBookModal();
@@ -1367,6 +1480,7 @@ function resetAddBookModal() {
   elements.selectPdfBtn.classList.remove('selected');
   elements.bookTitle.value = '';
   elements.targetDate.value = '';
+  elements.weekdaysOnly.checked = false;
   elements.planPreview.classList.add('hidden');
   elements.createPlanBtn.disabled = true;
 }
@@ -1377,6 +1491,205 @@ function showDailyCompleteModal() {
 
 function closeDailyCompleteModal() {
   elements.dailyCompleteModal.classList.remove('active');
+}
+
+// Schedule modal functions
+function openScheduleModal(book) {
+  elements.scheduleModalTitle.textContent = `Reading Schedule: ${book.title}`;
+  elements.scheduleCalendar.innerHTML = generateScheduleCalendar(book);
+  elements.scheduleModal.classList.add('active');
+}
+
+function closeScheduleModal() {
+  elements.scheduleModal.classList.remove('active');
+}
+
+function generateScheduleCalendar(book) {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  const targetDate = new Date(book.targetDate);
+  targetDate.setHours(0, 0, 0, 0);
+
+  const startDate = new Date(book.startDate || today);
+  startDate.setHours(0, 0, 0, 0);
+
+  // Calculate the reading schedule
+  const schedule = calculateReadingSchedule(book, startDate, targetDate);
+
+  // Group days by month
+  const monthGroups = {};
+  for (const day of schedule) {
+    const monthKey = `${day.date.getFullYear()}-${day.date.getMonth()}`;
+    if (!monthGroups[monthKey]) {
+      monthGroups[monthKey] = {
+        year: day.date.getFullYear(),
+        month: day.date.getMonth(),
+        days: []
+      };
+    }
+    monthGroups[monthKey].days.push(day);
+  }
+
+  // Generate HTML for each month
+  let html = '';
+  const monthNames = ['January', 'February', 'March', 'April', 'May', 'June',
+                      'July', 'August', 'September', 'October', 'November', 'December'];
+  const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+  for (const monthKey of Object.keys(monthGroups).sort()) {
+    const group = monthGroups[monthKey];
+    const firstDayOfMonth = new Date(group.year, group.month, 1);
+    const lastDayOfMonth = new Date(group.year, group.month + 1, 0);
+    const startDayOfWeek = firstDayOfMonth.getDay();
+
+    html += `
+      <div class="calendar-month">
+        <div class="calendar-month-header">${monthNames[group.month]} ${group.year}</div>
+        <div class="calendar-grid">
+          ${dayNames.map(d => `<div class="calendar-day-header">${d}</div>`).join('')}
+    `;
+
+    // Add empty cells for days before the first of the month
+    for (let i = 0; i < startDayOfWeek; i++) {
+      html += '<div class="calendar-day empty"></div>';
+    }
+
+    // Add days of the month
+    for (let day = 1; day <= lastDayOfMonth.getDate(); day++) {
+      const currentDate = new Date(group.year, group.month, day);
+      const scheduleDay = schedule.find(s =>
+        s.date.getDate() === day &&
+        s.date.getMonth() === group.month &&
+        s.date.getFullYear() === group.year
+      );
+
+      if (scheduleDay) {
+        html += renderCalendarDay(scheduleDay, today);
+      } else {
+        // Day not in schedule (before start or after end)
+        html += '<div class="calendar-day empty"></div>';
+      }
+    }
+
+    html += `
+        </div>
+      </div>
+    `;
+  }
+
+  // Add legend
+  html += `
+    <div class="calendar-legend">
+      <div class="legend-item">
+        <div class="legend-color completed"></div>
+        <span>Completed</span>
+      </div>
+      <div class="legend-item">
+        <div class="legend-color today"></div>
+        <span>Today</span>
+      </div>
+      <div class="legend-item">
+        <div class="legend-color future"></div>
+        <span>Scheduled</span>
+      </div>
+      ${book.weekdaysOnly ? `
+        <div class="legend-item">
+          <div class="legend-color weekend"></div>
+          <span>Weekend (off)</span>
+        </div>
+      ` : ''}
+    </div>
+  `;
+
+  return html;
+}
+
+function calculateReadingSchedule(book, startDate, targetDate) {
+  const schedule = [];
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  let currentPage = 0;
+  const totalPages = book.totalPages;
+  const weekdaysOnly = book.weekdaysOnly;
+
+  // Count reading days
+  let readingDays = 0;
+  const tempDate = new Date(startDate);
+  while (tempDate <= targetDate) {
+    const dayOfWeek = tempDate.getDay();
+    const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
+    if (!weekdaysOnly || !isWeekend) {
+      readingDays++;
+    }
+    tempDate.setDate(tempDate.getDate() + 1);
+  }
+
+  const pagesPerDay = Math.ceil(totalPages / readingDays);
+
+  // Generate schedule
+  const currentDate = new Date(startDate);
+  while (currentDate <= targetDate) {
+    const dayOfWeek = currentDate.getDay();
+    const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
+    const isToday = currentDate.getTime() === today.getTime();
+    const isPast = currentDate < today;
+
+    let dayInfo = {
+      date: new Date(currentDate),
+      isWeekend: isWeekend,
+      isToday: isToday,
+      isPast: isPast,
+      isReadingDay: !weekdaysOnly || !isWeekend,
+      startPage: null,
+      endPage: null,
+      isCompleted: false
+    };
+
+    if (dayInfo.isReadingDay) {
+      dayInfo.startPage = currentPage + 1;
+      dayInfo.endPage = Math.min(currentPage + pagesPerDay, totalPages);
+      currentPage = dayInfo.endPage;
+
+      // Check if this day's reading is completed
+      if (book.maxPageReached >= dayInfo.endPage) {
+        dayInfo.isCompleted = true;
+      }
+    }
+
+    schedule.push(dayInfo);
+    currentDate.setDate(currentDate.getDate() + 1);
+  }
+
+  return schedule;
+}
+
+function renderCalendarDay(day, today) {
+  let classes = ['calendar-day'];
+
+  if (day.isWeekend && !day.isReadingDay) {
+    classes.push('weekend');
+  } else if (day.isCompleted) {
+    classes.push('completed');
+  } else if (day.isToday) {
+    classes.push('today');
+  } else if (day.isPast) {
+    classes.push('past');
+  } else {
+    classes.push('future');
+  }
+
+  const dayNumber = day.date.getDate();
+  let content = `<span class="day-number">${dayNumber}</span>`;
+
+  if (day.isReadingDay && day.startPage !== null) {
+    content += `<span class="day-pages">p${day.startPage}-${day.endPage}</span>`;
+  } else if (!day.isReadingDay) {
+    content += `<span class="day-label">Off</span>`;
+  }
+
+  return `<div class="${classes.join(' ')}">${content}</div>`;
 }
 
 let pendingPdf = null;
@@ -1410,18 +1723,25 @@ function updatePlanPreview() {
     return;
   }
 
-  const daysUntil = getDaysUntil(elements.targetDate.value);
+  const weekdaysOnly = elements.weekdaysOnly.checked;
+  const daysUntil = weekdaysOnly
+    ? getWeekdaysUntil(elements.targetDate.value)
+    : getDaysUntil(elements.targetDate.value);
+
   if (daysUntil <= 0) {
-    elements.planDetails.textContent = 'Please select a future date.';
+    elements.planDetails.textContent = weekdaysOnly
+      ? 'Please select a date with at least one weekday.'
+      : 'Please select a future date.';
     elements.planPreview.classList.remove('hidden');
     elements.createPlanBtn.disabled = true;
     return;
   }
 
   const pagesPerDay = Math.ceil(pendingPdfPageCount / daysUntil);
+  const daysLabel = weekdaysOnly ? 'weekdays' : 'days';
 
   elements.planDetails.innerHTML = `
-    <strong>${pendingPdfPageCount} pages</strong> over <strong>${daysUntil} days</strong><br>
+    <strong>${pendingPdfPageCount} pages</strong> over <strong>${daysUntil} ${daysLabel}</strong><br>
     Daily reading: <strong>~${pagesPerDay} pages/day</strong>
   `;
   elements.planPreview.classList.remove('hidden');
@@ -1446,6 +1766,7 @@ async function createStudyPlan() {
     maxPageReached: 0,
     targetDate: elements.targetDate.value,
     startDate: new Date().toISOString().split('T')[0],
+    weekdaysOnly: elements.weekdaysOnly.checked,
     completedDays: [],
     dailyGoals: {},
     coverImage: coverImage
@@ -1470,23 +1791,39 @@ function getOrCreateDailyGoal(book) {
     return null;
   }
 
+  // If weekdays only and today is weekend, return 'weekend' marker
+  if (book.weekdaysOnly && isWeekend()) {
+    return { isWeekendBreak: true };
+  }
+
   // Check if we already have a goal for today
   if (book.dailyGoals && book.dailyGoals[today]) {
     return book.dailyGoals[today];
   }
 
-  // Generate new goal for today based on maxPageReached
+  // Generate new goal for today
+  // Start from maxPageReached (the furthest page they've started reading)
+  // They need to finish reading this page, so it's included in today's goal
   const targetDate = new Date(book.targetDate);
   const todayDate = new Date(today);
   targetDate.setHours(0, 0, 0, 0);
   todayDate.setHours(0, 0, 0, 0);
 
-  const daysLeft = Math.max(1, Math.ceil((targetDate - todayDate) / (1000 * 60 * 60 * 24)));
-  const pagesLeft = book.totalPages - book.maxPageReached;
+  // Calculate days left based on weekdays setting
+  let daysLeft;
+  if (book.weekdaysOnly) {
+    daysLeft = Math.max(1, getWeekdaysUntil(book.targetDate));
+  } else {
+    daysLeft = Math.max(1, Math.ceil((targetDate - todayDate) / (1000 * 60 * 60 * 24)));
+  }
+
+  // Start from maxPageReached (or page 1 if not started)
+  // maxPageReached is the last page they navigated to but may not have finished reading
+  const startPage = Math.max(1, book.maxPageReached || 1);
+  const pagesLeft = book.totalPages - startPage + 1;
   const pagesPerDay = Math.ceil(pagesLeft / daysLeft);
 
-  const startPage = book.maxPageReached + 1;
-  const endPage = Math.min(book.maxPageReached + pagesPerDay, book.totalPages);
+  const endPage = Math.min(startPage + pagesPerDay - 1, book.totalPages);
 
   const goal = { startPage, endPage, date: today };
 
@@ -1588,7 +1925,9 @@ function updateNavButtons() {
 }
 
 function updateReadingAssignment() {
-  if (todayGoal) {
+  if (todayGoal && todayGoal.isWeekendBreak) {
+    elements.readingAssignment.textContent = 'On break today (weekend)';
+  } else if (todayGoal) {
     elements.readingAssignment.textContent = `Today: pages ${todayGoal.startPage}-${todayGoal.endPage}`;
   } else {
     elements.readingAssignment.textContent = 'Book complete!';
@@ -1600,6 +1939,14 @@ function updateDailyProgressWheel() {
     elements.dailyProgressWheel.classList.add('complete');
     elements.progressRingFill.setAttribute('stroke-dasharray', '100, 100');
     elements.dailyProgressText.textContent = '100%';
+    return;
+  }
+
+  // Handle weekend break
+  if (todayGoal.isWeekendBreak) {
+    elements.dailyProgressWheel.classList.add('complete');
+    elements.progressRingFill.setAttribute('stroke-dasharray', '100, 100');
+    elements.dailyProgressText.textContent = 'OFF';
     return;
   }
 
@@ -1665,9 +2012,11 @@ async function changePage(delta) {
     await saveProgress();
     updateDailyProgressWheel();
 
-    // Check if daily reading is complete (reached end page of goal)
-    if (todayGoal && currentBook.maxPageReached >= todayGoal.endPage) {
-      // Check if this is the first time reaching the goal
+    // Check if daily reading is complete
+    // The modal shows when you navigate PAST the end page (meaning you've read it)
+    // e.g., if goal is pages 1-5, modal shows when you go to page 6
+    if (todayGoal && !todayGoal.isWeekendBreak && currentPageNum > todayGoal.endPage) {
+      // Check if this is the first time completing the goal
       const today = new Date().toISOString().split('T')[0];
       if (!currentBook.completedDays.includes(today)) {
         currentBook.completedDays.push(today);
@@ -1703,7 +2052,11 @@ function calculateProgress(book) {
 function getPagesPerDay(book) {
   const maxPage = book.maxPageReached || 0;
   const pagesLeft = book.totalPages - maxPage;
-  const daysLeft = Math.max(1, getDaysUntil(book.targetDate));
+
+  // Use weekdays if book is set to weekdays only
+  const daysLeft = book.weekdaysOnly
+    ? Math.max(1, getWeekdaysUntil(book.targetDate))
+    : Math.max(1, getDaysUntil(book.targetDate));
 
   if (pagesLeft <= 0) return 0;
   return Math.ceil(pagesLeft / daysLeft);
@@ -1715,6 +2068,33 @@ function getDaysUntil(dateStr) {
   target.setHours(0, 0, 0, 0);
   today.setHours(0, 0, 0, 0);
   return Math.ceil((target - today) / (1000 * 60 * 60 * 24));
+}
+
+// Count weekdays (Mon-Fri) between today and target date
+function getWeekdaysUntil(dateStr) {
+  const target = new Date(dateStr);
+  const today = new Date();
+  target.setHours(0, 0, 0, 0);
+  today.setHours(0, 0, 0, 0);
+
+  let count = 0;
+  const current = new Date(today);
+
+  while (current <= target) {
+    const dayOfWeek = current.getDay();
+    if (dayOfWeek !== 0 && dayOfWeek !== 6) { // Not Sunday (0) or Saturday (6)
+      count++;
+    }
+    current.setDate(current.getDate() + 1);
+  }
+
+  return count;
+}
+
+// Check if today is a weekend
+function isWeekend() {
+  const day = new Date().getDay();
+  return day === 0 || day === 6;
 }
 
 function formatDate(dateStr) {
