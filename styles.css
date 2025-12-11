@@ -906,11 +906,231 @@ body {
   color: white;
 }
 
-.no-books-message {
+.no-books-message,
+.no-voices-message {
   padding: 20px;
   text-align: center;
   color: var(--text-secondary);
 }
+
+.no-voices-message.hidden {
+  display: none;
+}
+
+/* Voice Configuration */
+.voice-config-add {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.voice-config-add select {
+  flex: 1;
+  padding: 10px 14px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text-primary);
+  font-size: 0.95rem;
+  cursor: pointer;
+}
+
+.voice-config-add select:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.configured-voices-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.configured-voices-list.hidden {
+  display: none;
+}
+
+.voice-config-item {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 16px;
+  background: var(--bg-tertiary);
+  border-radius: 8px;
+}
+
+.voice-config-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.voice-config-info h4 {
+  font-size: 0.95rem;
+  font-weight: 500;
+  margin-bottom: 4px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.voice-config-info .voice-lang {
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+}
+
+.voice-config-speed {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 200px;
+}
+
+.voice-config-speed label {
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+.voice-config-speed input[type="range"] {
+  flex: 1;
+  height: 4px;
+  -webkit-appearance: none;
+  background: var(--border);
+  border-radius: 2px;
+  cursor: pointer;
+}
+
+.voice-config-speed input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 16px;
+  height: 16px;
+  background: var(--accent);
+  border-radius: 50%;
+  cursor: pointer;
+}
+
+.voice-config-speed .speed-value {
+  font-size: 0.85rem;
+  color: var(--text-primary);
+  min-width: 36px;
+  text-align: right;
+}
+
+.voice-config-item .test-voice-btn {
+  width: 36px;
+  height: 36px;
+  border: none;
+  background: var(--bg-secondary);
+  color: var(--text-secondary);
+  cursor: pointer;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+}
+
+.voice-config-item .test-voice-btn:hover {
+  background: var(--accent);
+  color: white;
+}
+
+.voice-config-item .delete-btn {
+  padding: 6px 12px;
+  font-size: 0.8rem;
+}
+
+/* Current voice name in audio bar */
+.current-voice-name {
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 200px;
+}
+
+/* Text Mode Panel */
+.text-mode-panel {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: var(--bg-primary);
+  overflow-y: auto;
+  padding: 40px;
+  z-index: 50;
+}
+
+.text-mode-panel.hidden {
+  display: none;
+}
+
+.extracted-text {
+  max-width: 700px;
+  margin: 0 auto;
+  font-size: 1.1rem;
+  line-height: 1.8;
+  color: var(--text-primary);
+  white-space: pre-wrap;
+  font-family: Georgia, 'Times New Roman', serif;
+}
+
+/* Audio Controls */
+.audio-controls {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 12px 20px;
+  background: var(--bg-secondary);
+  border-top: 1px solid var(--border);
+}
+
+.audio-controls.hidden {
+  display: none;
+}
+
+.audio-btn {
+  width: 44px;
+  height: 44px;
+  border: none;
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+  cursor: pointer;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+}
+
+.audio-btn:hover {
+  background: var(--accent);
+  color: white;
+}
+
+.audio-progress {
+  flex: 1;
+  padding: 0 10px;
+}
+
+.audio-progress-bar {
+  height: 6px;
+  background: var(--bg-tertiary);
+  border-radius: 3px;
+  overflow: hidden;
+  cursor: pointer;
+}
+
+.audio-progress-fill {
+  height: 100%;
+  background: var(--accent);
+  border-radius: 3px;
+  width: 0%;
+  transition: width 0.1s linear;
+}
+
 
 /* Utility */
 .hidden {

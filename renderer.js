@@ -16,6 +16,15 @@ let pendingPdfPath = null;
 let pendingPdfPageCount = 0;
 let currentZoom = 1.0;
 let rulerVisible = false;
+let textModeVisible = false;
+let audioModeVisible = false;
+let currentPageText = '';
+let speechSynthesis = window.speechSynthesis;
+let currentUtterance = null;
+let isPlaying = false;
+let availableVoices = [];
+let configuredVoices = []; // User's configured voices with speeds
+let currentVoiceConfig = null; // Currently selected voice config for this page
 
 // Current session's daily goal (loaded from book data)
 let todayGoal = null;
@@ -60,6 +69,27 @@ const elements = {
   // Reading ruler
   readingRuler: document.getElementById('readingRuler'),
   toggleRulerBtn: document.getElementById('toggleRulerBtn'),
+
+  // Text mode
+  toggleTextModeBtn: document.getElementById('toggleTextModeBtn'),
+  textModePanel: document.getElementById('textModePanel'),
+  extractedText: document.getElementById('extractedText'),
+
+  // Audio mode
+  toggleAudioBtn: document.getElementById('toggleAudioBtn'),
+  audioControls: document.getElementById('audioControls'),
+  audioPlayPauseBtn: document.getElementById('audioPlayPauseBtn'),
+  audioPlayIcon: document.getElementById('audioPlayIcon'),
+  audioPauseIcon: document.getElementById('audioPauseIcon'),
+  audioStopBtn: document.getElementById('audioStopBtn'),
+  audioProgressFill: document.getElementById('audioProgressFill'),
+  currentVoiceName: document.getElementById('currentVoiceName'),
+
+  // Voice configuration (settings)
+  voiceSelectDropdown: document.getElementById('voiceSelectDropdown'),
+  addVoiceBtn: document.getElementById('addVoiceBtn'),
+  configuredVoicesList: document.getElementById('configured-voices-list'),
+  noVoicesMessage: document.getElementById('no-voices-message'),
 
   // Progress wheel
   dailyProgressWheel: document.getElementById('dailyProgressWheel'),
@@ -222,6 +252,21 @@ function setupEventListeners() {
   elements.toggleRulerBtn.addEventListener('click', toggleRuler);
   elements.pdfContainer.addEventListener('mousemove', updateRulerPosition);
 
+  // Text mode
+  elements.toggleTextModeBtn.addEventListener('click', toggleTextMode);
+
+  // Audio mode
+  elements.toggleAudioBtn.addEventListener('click', toggleAudioMode);
+  elements.audioPlayPauseBtn.addEventListener('click', toggleAudioPlayback);
+  elements.audioStopBtn.addEventListener('click', stopAudio);
+
+  // Voice configuration
+  elements.addVoiceBtn.addEventListener('click', addConfiguredVoice);
+
+  // Load available voices
+  loadVoices();
+  speechSynthesis.onvoiceschanged = loadVoices;
+
   // Daily complete modal
   elements.continueReadingBtn.addEventListener('click', closeDailyCompleteModal);
   elements.closeReaderBtn.addEventListener('click', () => {
@@ -256,6 +301,416 @@ function toggleRuler() {
   elements.toggleRulerBtn.classList.toggle('ruler-active', rulerVisible);
 }
 
+// Extract text from current page
+async function extractPageText(pageNum) {
+  if (!currentPdf) return '';
+
+  try {
+    const page = await currentPdf.getPage(pageNum);
+    const textContent = await page.getTextContent();
+
+    if (textContent.items.length === 0) return '';
+
+    // Build text with proper line breaks based on position
+    let result = '';
+    let lastY = null;
+    let lastX = null;
+    let lastHeight = 12; // Default line height estimate
+
+    for (const item of textContent.items) {
+      if (!item.str) continue;
+
+      const y = item.transform[5]; // Y position
+      const x = item.transform[4]; // X position
+      const height = item.height || lastHeight;
+
+      if (lastY !== null) {
+        // Calculate vertical gap
+        const yDiff = lastY - y; // PDF coordinates go bottom-up
+
+        // Detect new line (Y changed significantly)
+        if (Math.abs(yDiff) > height * 0.5) {
+          // Detect paragraph break (larger gap)
+          if (Math.abs(yDiff) > height * 1.5) {
+            result += '\n\n';
+          } else {
+            result += '\n';
+          }
+        } else if (lastX !== null && x > lastX + 5) {
+          // Same line but gap between words
+          result += ' ';
+        }
+      }
+
+      result += item.str;
+      lastY = y;
+      lastX = x + (item.width || 0);
+      lastHeight = height;
+    }
+
+    // Clean up excessive whitespace while preserving paragraph breaks
+    return result
+      .replace(/[ \t]+/g, ' ')        // Multiple spaces to single space
+      .replace(/\n /g, '\n')          // Remove space after newline
+      .replace(/ \n/g, '\n')          // Remove space before newline
+      .replace(/\n{3,}/g, '\n\n')     // Max 2 newlines (1 paragraph break)
+      .trim();
+  } catch (error) {
+    console.error('Error extracting text:', error);
+    return '';
+  }
+}
+
+// Toggle text mode
+async function toggleTextMode() {
+  textModeVisible = !textModeVisible;
+  elements.textModePanel.classList.toggle('hidden', !textModeVisible);
+  elements.toggleTextModeBtn.classList.toggle('ruler-active', textModeVisible);
+
+  if (textModeVisible) {
+    // Extract and display text
+    elements.extractedText.textContent = 'Extracting text...';
+    currentPageText = await extractPageText(currentPageNum);
+    elements.extractedText.textContent = currentPageText || 'No text found on this page.';
+  }
+}
+
+// Toggle audio mode
+async function toggleAudioMode() {
+  audioModeVisible = !audioModeVisible;
+  elements.audioControls.classList.toggle('hidden', !audioModeVisible);
+  elements.toggleAudioBtn.classList.toggle('ruler-active', audioModeVisible);
+
+  if (audioModeVisible) {
+    // Extract text if not already done
+    if (!currentPageText) {
+      currentPageText = await extractPageText(currentPageNum);
+    }
+  } else {
+    // Stop audio when closing audio mode
+    stopAudio();
+  }
+}
+
+// Toggle audio playback
+function toggleAudioPlayback() {
+  if (isPlaying) {
+    pauseAudio();
+  } else {
+    playAudio();
+  }
+}
+
+// Track if we're paused (separate from speechSynthesis.paused which can be unreliable)
+let isPaused = false;
+
+// Select a random voice from configured voices
+function selectRandomVoice() {
+  if (configuredVoices.length === 0) return null;
+
+  const randomIndex = Math.floor(Math.random() * configuredVoices.length);
+  const config = configuredVoices[randomIndex];
+
+  // Find the actual voice object
+  const voice = availableVoices.find(v => v.name === config.name);
+  if (voice) {
+    return { voice, speed: config.speed };
+  }
+  return null;
+}
+
+// Play audio
+async function playAudio() {
+  if (!currentPageText) {
+    currentPageText = await extractPageText(currentPageNum);
+  }
+
+  if (!currentPageText) {
+    return;
+  }
+
+  // Check if we have configured voices
+  if (configuredVoices.length === 0) {
+    alert('Please configure at least one voice in Settings before using audio playback.');
+    return;
+  }
+
+  // If paused, resume
+  if (isPaused && speechSynthesis.paused) {
+    speechSynthesis.resume();
+    isPlaying = true;
+    isPaused = false;
+    updatePlayPauseIcon();
+    return;
+  }
+
+  // Cancel any existing speech first (fixes issue after stop)
+  speechSynthesis.cancel();
+
+  // Select random voice if not already selected for this page
+  if (!currentVoiceConfig) {
+    currentVoiceConfig = selectRandomVoice();
+  }
+
+  if (!currentVoiceConfig) {
+    alert('No valid voice found. Please check your voice configuration in Settings.');
+    return;
+  }
+
+  // Create new utterance
+  currentUtterance = new SpeechSynthesisUtterance(currentPageText);
+  currentUtterance.voice = currentVoiceConfig.voice;
+  currentUtterance.rate = currentVoiceConfig.speed;
+
+  // Update UI with current voice name
+  const voiceLabel = currentVoiceConfig.voice.name
+    .replace('com.apple.voice.compact.', '')
+    .replace('com.apple.speech.synthesis.voice.', '');
+  elements.currentVoiceName.textContent = voiceLabel;
+
+  // Track progress
+  currentUtterance.onboundary = (event) => {
+    if (event.name === 'word') {
+      const progress = (event.charIndex / currentPageText.length) * 100;
+      elements.audioProgressFill.style.width = `${progress}%`;
+    }
+  };
+
+  currentUtterance.onend = () => {
+    isPlaying = false;
+    isPaused = false;
+    updatePlayPauseIcon();
+    elements.audioProgressFill.style.width = '100%';
+  };
+
+  currentUtterance.onerror = (event) => {
+    // Ignore 'interrupted' errors from cancel()
+    if (event.error !== 'interrupted') {
+      isPlaying = false;
+      isPaused = false;
+      updatePlayPauseIcon();
+    }
+  };
+
+  speechSynthesis.speak(currentUtterance);
+  isPlaying = true;
+  isPaused = false;
+  updatePlayPauseIcon();
+}
+
+// Pause audio
+function pauseAudio() {
+  speechSynthesis.pause();
+  isPlaying = false;
+  isPaused = true;
+  updatePlayPauseIcon();
+}
+
+// Stop audio
+function stopAudio() {
+  speechSynthesis.cancel();
+  isPlaying = false;
+  isPaused = false;
+  currentUtterance = null;
+  elements.audioProgressFill.style.width = '0%';
+  updatePlayPauseIcon();
+}
+
+// Update play/pause icon
+function updatePlayPauseIcon() {
+  elements.audioPlayIcon.classList.toggle('hidden', isPlaying);
+  elements.audioPauseIcon.classList.toggle('hidden', !isPlaying);
+}
+
+// Load available voices
+function loadVoices() {
+  const allVoices = speechSynthesis.getVoices();
+
+  if (allVoices.length === 0) return;
+
+  // Filter for English voices and sort by quality
+  const englishVoices = allVoices.filter(v => v.lang.startsWith('en'));
+
+  // Prioritize premium/enhanced voices
+  availableVoices = englishVoices.sort((a, b) => {
+    const premiumKeywords = ['Premium', 'Enhanced', 'Neural', 'Siri'];
+    const aIsPremium = premiumKeywords.some(k => a.name.includes(k));
+    const bIsPremium = premiumKeywords.some(k => b.name.includes(k));
+
+    if (aIsPremium && !bIsPremium) return -1;
+    if (!aIsPremium && bIsPremium) return 1;
+
+    if (a.localService && !b.localService) return -1;
+    if (!a.localService && b.localService) return 1;
+
+    return a.name.localeCompare(b.name);
+  });
+
+  // Populate settings dropdown
+  populateVoiceDropdown();
+
+  // Load saved voice configurations
+  loadConfiguredVoices();
+}
+
+// Populate voice dropdown in settings
+function populateVoiceDropdown() {
+  elements.voiceSelectDropdown.innerHTML = '';
+
+  availableVoices.forEach((voice, index) => {
+    const option = document.createElement('option');
+    option.value = voice.name;
+
+    const premiumKeywords = ['Premium', 'Enhanced', 'Neural', 'Siri'];
+    const isPremium = premiumKeywords.some(k => voice.name.includes(k));
+    const label = voice.name
+      .replace('com.apple.voice.compact.', '')
+      .replace('com.apple.speech.synthesis.voice.', '');
+    option.textContent = isPremium ? `★ ${label}` : label;
+
+    elements.voiceSelectDropdown.appendChild(option);
+  });
+}
+
+// Load configured voices from localStorage
+function loadConfiguredVoices() {
+  const saved = localStorage.getItem('configuredVoices');
+  if (saved) {
+    configuredVoices = JSON.parse(saved);
+  }
+  renderConfiguredVoices();
+}
+
+// Save configured voices to localStorage
+function saveConfiguredVoices() {
+  localStorage.setItem('configuredVoices', JSON.stringify(configuredVoices));
+}
+
+// Add a new configured voice
+function addConfiguredVoice() {
+  const voiceName = elements.voiceSelectDropdown.value;
+  if (!voiceName) return;
+
+  // Check if already configured
+  if (configuredVoices.some(v => v.name === voiceName)) {
+    alert('This voice is already in your list.');
+    return;
+  }
+
+  configuredVoices.push({
+    name: voiceName,
+    speed: 1.0
+  });
+
+  saveConfiguredVoices();
+  renderConfiguredVoices();
+}
+
+// Remove a configured voice
+function removeConfiguredVoice(voiceName) {
+  configuredVoices = configuredVoices.filter(v => v.name !== voiceName);
+  saveConfiguredVoices();
+  renderConfiguredVoices();
+}
+
+// Update speed for a configured voice
+function updateVoiceSpeed(voiceName, speed) {
+  const config = configuredVoices.find(v => v.name === voiceName);
+  if (config) {
+    config.speed = speed;
+    saveConfiguredVoices();
+  }
+}
+
+// Test a voice with a sample sentence
+function testVoice(voiceName, speed) {
+  const voice = availableVoices.find(v => v.name === voiceName);
+  if (!voice) return;
+
+  // Cancel any ongoing speech
+  speechSynthesis.cancel();
+
+  const testSentences = [
+    "The quick brown fox jumps over the lazy dog.",
+    "Reading is a wonderful way to expand your mind.",
+    "Welcome to Study Hub, your personal reading companion.",
+    "Knowledge is power, and books are the key.",
+    "Every page you read brings you closer to your goal."
+  ];
+
+  const sentence = testSentences[Math.floor(Math.random() * testSentences.length)];
+
+  const utterance = new SpeechSynthesisUtterance(sentence);
+  utterance.voice = voice;
+  utterance.rate = speed;
+
+  speechSynthesis.speak(utterance);
+}
+
+// Render configured voices list
+function renderConfiguredVoices() {
+  elements.configuredVoicesList.innerHTML = '';
+
+  if (configuredVoices.length === 0) {
+    elements.noVoicesMessage.classList.remove('hidden');
+    elements.configuredVoicesList.classList.add('hidden');
+    return;
+  }
+
+  elements.noVoicesMessage.classList.add('hidden');
+  elements.configuredVoicesList.classList.remove('hidden');
+
+  configuredVoices.forEach(config => {
+    const voice = availableVoices.find(v => v.name === config.name);
+    if (!voice) return;
+
+    const item = document.createElement('div');
+    item.className = 'voice-config-item';
+
+    const label = voice.name
+      .replace('com.apple.voice.compact.', '')
+      .replace('com.apple.speech.synthesis.voice.', '');
+
+    const premiumKeywords = ['Premium', 'Enhanced', 'Neural', 'Siri'];
+    const isPremium = premiumKeywords.some(k => voice.name.includes(k));
+
+    item.innerHTML = `
+      <div class="voice-config-info">
+        <h4>${isPremium ? '★ ' : ''}${label}</h4>
+        <span class="voice-lang">${voice.lang}</span>
+      </div>
+      <div class="voice-config-speed">
+        <label>Speed:</label>
+        <input type="range" min="0.5" max="2" step="0.1" value="${config.speed}" data-voice="${config.name}">
+        <span class="speed-value">${config.speed}x</span>
+      </div>
+      <button class="test-voice-btn" data-voice="${config.name}" title="Test voice">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+          <polygon points="5 3 19 12 5 21 5 3"></polygon>
+        </svg>
+      </button>
+      <button class="delete-btn" data-voice="${config.name}">Remove</button>
+    `;
+
+    // Add event listeners
+    const slider = item.querySelector('input[type="range"]');
+    const speedValue = item.querySelector('.speed-value');
+    slider.addEventListener('input', (e) => {
+      const speed = parseFloat(e.target.value);
+      speedValue.textContent = `${speed}x`;
+      updateVoiceSpeed(config.name, speed);
+    });
+
+    const testBtn = item.querySelector('.test-voice-btn');
+    testBtn.addEventListener('click', () => testVoice(config.name, config.speed));
+
+    const deleteBtn = item.querySelector('.delete-btn');
+    deleteBtn.addEventListener('click', () => removeConfiguredVoice(config.name));
+
+    elements.configuredVoicesList.appendChild(item);
+  });
+}
+
 // Zoom functions
 function changeZoom(delta) {
   const newZoom = Math.max(0.5, Math.min(3.0, currentZoom + delta));
@@ -278,12 +733,23 @@ function switchView(viewName) {
     view.classList.remove('active');
   });
 
-  // Hide ruler when leaving reader
+  // Hide ruler and reset modes when leaving reader
   if (viewName !== 'reader') {
     rulerVisible = false;
     elements.readingRuler.classList.add('hidden');
     elements.pdfContainer.classList.remove('ruler-active');
     elements.toggleRulerBtn.classList.remove('ruler-active');
+
+    // Reset text mode
+    textModeVisible = false;
+    elements.textModePanel.classList.add('hidden');
+    elements.toggleTextModeBtn.classList.remove('ruler-active');
+
+    // Reset audio mode
+    stopAudio();
+    audioModeVisible = false;
+    elements.audioControls.classList.add('hidden');
+    elements.toggleAudioBtn.classList.remove('ruler-active');
   }
 
   if (viewName === 'library') {
@@ -781,6 +1247,18 @@ async function changePage(delta) {
     // Reset scroll to top when changing pages
     elements.pdfContainer.scrollTo(0, 0);
 
+    // Clear cached text and stop audio when changing pages
+    currentPageText = '';
+    currentVoiceConfig = null; // Reset so a new random voice is selected
+    stopAudio();
+
+    // Update text mode if visible
+    if (textModeVisible) {
+      elements.extractedText.textContent = 'Extracting text...';
+      currentPageText = await extractPageText(currentPageNum);
+      elements.extractedText.textContent = currentPageText || 'No text found on this page.';
+    }
+
     // Update current page (for resume)
     currentBook.currentPage = currentPageNum;
 
@@ -866,6 +1344,10 @@ function handleKeyboard(e) {
     changePage(1);
   } else if (e.key === 'r' || e.key === 'R') {
     toggleRuler();
+  } else if (e.key === 't' || e.key === 'T') {
+    toggleTextMode();
+  } else if (e.key === 'a' || e.key === 'A') {
+    toggleAudioMode();
   } else if (e.key === '+' || e.key === '=') {
     changeZoom(0.25);
   } else if (e.key === '-' || e.key === '_') {

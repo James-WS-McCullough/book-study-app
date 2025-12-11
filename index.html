@@ -93,6 +93,22 @@
         </div>
         <div class="settings-content">
           <div class="settings-section">
+            <h3>Text-to-Speech Voices</h3>
+            <p class="settings-description">Configure your preferred voices for audio playback. A random voice from your list will be used for each page.</p>
+            <div class="voice-config-add">
+              <select id="voiceSelectDropdown">
+                <option value="">Loading voices...</option>
+              </select>
+              <button id="addVoiceBtn" class="secondary-btn">Add Voice</button>
+            </div>
+            <div id="configured-voices-list" class="configured-voices-list">
+              <!-- Configured voices will be rendered here -->
+            </div>
+            <div id="no-voices-message" class="no-voices-message">
+              <p>No voices configured. Add voices above to enable audio playback.</p>
+            </div>
+          </div>
+          <div class="settings-section">
             <h3>Manage Books</h3>
             <p class="settings-description">Remove books from your library. This will delete all reading progress for the book.</p>
             <div id="books-management-list" class="books-management-list">
@@ -164,6 +180,20 @@
                 <line x1="3" y1="18" x2="21" y2="18"></line>
               </svg>
             </button>
+            <button id="toggleTextModeBtn" class="icon-btn" title="Toggle Text Mode (T)">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M4 7V4h16v3"></path>
+                <line x1="12" y1="4" x2="12" y2="20"></line>
+                <line x1="8" y1="20" x2="16" y2="20"></line>
+              </svg>
+            </button>
+            <button id="toggleAudioBtn" class="icon-btn" title="Toggle Audio Mode (A)">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
+                <path d="M15.54 8.46a5 5 0 0 1 0 7.07"></path>
+                <path d="M19.07 4.93a10 10 0 0 1 0 14.14"></path>
+              </svg>
+            </button>
             <button id="readerDarkMode" class="icon-btn" title="Toggle Dark Mode">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
@@ -176,6 +206,33 @@
             <div class="ruler-line"></div>
           </div>
           <canvas id="pdf-canvas"></canvas>
+          <!-- Text Mode Panel -->
+          <div id="textModePanel" class="text-mode-panel hidden">
+            <div id="extractedText" class="extracted-text"></div>
+          </div>
+        </div>
+        <!-- Audio Controls Bar -->
+        <div id="audioControls" class="audio-controls hidden">
+          <button id="audioPlayPauseBtn" class="audio-btn" title="Play/Pause">
+            <svg id="audioPlayIcon" width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
+              <polygon points="5 3 19 12 5 21 5 3"></polygon>
+            </svg>
+            <svg id="audioPauseIcon" width="24" height="24" viewBox="0 0 24 24" fill="currentColor" class="hidden">
+              <rect x="6" y="4" width="4" height="16"></rect>
+              <rect x="14" y="4" width="4" height="16"></rect>
+            </svg>
+          </button>
+          <button id="audioStopBtn" class="audio-btn" title="Stop">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+              <rect x="4" y="4" width="16" height="16" rx="2"></rect>
+            </svg>
+          </button>
+          <div class="audio-progress">
+            <div id="audioProgressBar" class="audio-progress-bar">
+              <div id="audioProgressFill" class="audio-progress-fill"></div>
+            </div>
+          </div>
+          <span id="currentVoiceName" class="current-voice-name"></span>
         </div>
         <div class="reader-footer">
           <button id="prevPage" class="nav-page-btn">
