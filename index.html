@@ -54,10 +54,14 @@
             Add Book
           </button>
         </div>
-        <div id="books-grid" class="books-grid">
+        <div id="library-loading" class="loading-state">
+          <div class="loading-spinner"></div>
+          <p>Loading library...</p>
+        </div>
+        <div id="books-grid" class="books-grid hidden">
           <!-- Books will be rendered here -->
         </div>
-        <div id="empty-library" class="empty-state">
+        <div id="empty-library" class="empty-state hidden">
           <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
             <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path>
             <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path>

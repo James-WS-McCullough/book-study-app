@@ -49,6 +49,7 @@ const elements = {
   navBtns: document.querySelectorAll('.nav-btn'),
 
   // Library
+  libraryLoading: document.getElementById('library-loading'),
   booksGrid: document.getElementById('books-grid'),
   emptyLibrary: document.getElementById('empty-library'),
   addBookBtn: document.getElementById('addBookBtn'),
@@ -349,11 +350,13 @@ async function extractPageText(pageNum) {
 
     if (textContent.items.length === 0) return '';
 
-    // Build text with proper line breaks based on position
-    let result = '';
+    // Build lines first, then intelligently join them
+    const lines = [];
+    let currentLine = '';
     let lastY = null;
     let lastX = null;
     let lastHeight = 12; // Default line height estimate
+    let lineStartX = null; // Track where each line starts (for indent detection)
 
     for (const item of textContent.items) {
       if (!item.str) continue;
@@ -368,22 +371,84 @@ async function extractPageText(pageNum) {
 
         // Detect new line (Y changed significantly)
         if (Math.abs(yDiff) > height * 0.5) {
-          // Detect paragraph break (larger gap)
-          if (Math.abs(yDiff) > height * 1.5) {
-            result += '\n\n';
-          } else {
-            result += '\n';
+          // Save current line
+          if (currentLine.trim()) {
+            lines.push({ text: currentLine.trim(), startX: lineStartX, gap: Math.abs(yDiff) / height });
           }
+          currentLine = item.str;
+          lineStartX = x;
         } else if (lastX !== null && x > lastX + 5) {
           // Same line but gap between words
-          result += ' ';
+          currentLine += ' ' + item.str;
+        } else {
+          currentLine += item.str;
         }
+      } else {
+        currentLine = item.str;
+        lineStartX = x;
       }
 
-      result += item.str;
       lastY = y;
       lastX = x + (item.width || 0);
       lastHeight = height;
+    }
+
+    // Don't forget the last line
+    if (currentLine.trim()) {
+      lines.push({ text: currentLine.trim(), startX: lineStartX, gap: 0 });
+    }
+
+    if (lines.length === 0) return '';
+
+    // Calculate the median gap to determine "normal" line spacing for this page
+    const gaps = lines.slice(1).map(l => l.gap).filter(g => g > 0);
+    const sortedGaps = [...gaps].sort((a, b) => a - b);
+    const medianGap = sortedGaps.length > 0
+      ? sortedGaps[Math.floor(sortedGaps.length / 2)]
+      : 1.0;
+
+    // Now intelligently join lines
+    // A line continues the previous one if:
+    // - The gap is close to the median (normal line spacing)
+    // - The current line doesn't start with a bullet or number
+    // - OR the previous line ends mid-word (hyphenation)
+    let result = lines[0].text;
+
+    for (let i = 1; i < lines.length; i++) {
+      const prevLine = lines[i - 1];
+      const currLine = lines[i];
+      const currText = currLine.text;
+      const prevText = prevLine.text;
+
+      // Detect if this is a paragraph break based on gap relative to median
+      // A gap significantly larger than median indicates paragraph break
+      const gapRatio = medianGap > 0 ? currLine.gap / medianGap : 1;
+      const isLargeGap = gapRatio > 1.4; // Gap is 40% larger than normal
+
+      const currStartsBullet = /^[•\-\*]\s/.test(currText) || /^\d+[\.\)]\s/.test(currText);
+      const prevEndsHyphen = /-$/.test(prevText);
+
+      // Determine if we should join or break
+      let shouldBreak = false;
+
+      if (isLargeGap) {
+        // Large vertical gap relative to normal = paragraph break
+        shouldBreak = true;
+      } else if (currStartsBullet) {
+        // Bullet point or numbered list = new paragraph
+        shouldBreak = true;
+      }
+      // Otherwise, join lines (even if sentence ended - same paragraph)
+
+      if (shouldBreak) {
+        result += '\n\n' + currText;
+      } else if (prevEndsHyphen) {
+        // Join hyphenated words without space
+        result = result.slice(0, -1) + currText;
+      } else {
+        // Join with space (unwrap the line)
+        result += ' ' + currText;
+      }
     }
 
     // Clean up excessive whitespace while preserving paragraph breaks
@@ -404,12 +469,24 @@ async function toggleTextMode() {
   textModeVisible = !textModeVisible;
   elements.textModePanel.classList.toggle('hidden', !textModeVisible);
   elements.toggleTextModeBtn.classList.toggle('ruler-active', textModeVisible);
+  updatePanelOpenState();
 
   if (textModeVisible) {
     // Extract and display text
     elements.extractedText.textContent = 'Extracting text...';
     currentPageText = await extractPageText(currentPageNum);
     elements.extractedText.textContent = currentPageText || 'No text found on this page.';
+  }
+}
+
+// Update panel-open class on pdf-container based on visible panels
+function updatePanelOpenState() {
+  const panelOpen = textModeVisible || speedReadingVisible;
+  elements.pdfContainer.classList.toggle('panel-open', panelOpen);
+
+  // Reset scroll position when opening a panel
+  if (panelOpen) {
+    elements.pdfContainer.scrollTo(0, 0);
   }
 }
 
@@ -646,6 +723,7 @@ async function toggleSpeedReadingMode() {
   speedReadingVisible = !speedReadingVisible;
   elements.speedReadingPanel.classList.toggle('hidden', !speedReadingVisible);
   elements.toggleSpeedReadBtn.classList.toggle('ruler-active', speedReadingVisible);
+  updatePanelOpenState();
 
   if (speedReadingVisible) {
     // Extract text if not already done
@@ -1064,14 +1142,19 @@ function switchView(viewName) {
 
 // Library Rendering
 function renderLibrary() {
+  // Hide loading indicator
+  elements.libraryLoading.classList.add('hidden');
+
   elements.booksGrid.innerHTML = '';
 
   if (appData.books.length === 0) {
+    elements.booksGrid.classList.add('hidden');
     elements.emptyLibrary.classList.remove('hidden');
     return;
   }
 
   elements.emptyLibrary.classList.add('hidden');
+  elements.booksGrid.classList.remove('hidden');
 
   appData.books.forEach(book => {
     const card = createBookCard(book);
