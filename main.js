@@ -102,6 +102,75 @@ ipcMain.handle('get-file-name', async (event, filePath) => {
   return path.basename(filePath, '.pdf');
 });
 
+// Generate quiz questions using OpenAI
+ipcMain.handle('generate-quiz', async (event, { apiKey, text, numQuestions = 5 }) => {
+  try {
+    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`
+      },
+      body: JSON.stringify({
+        model: 'gpt-4o-mini',
+        messages: [
+          {
+            role: 'system',
+            content: `You are a helpful assistant that generates quiz questions based on provided text. Generate exactly ${numQuestions} multiple-choice questions to test comprehension of the material. Each question should have 4 answer options with exactly one correct answer.`
+          },
+          {
+            role: 'user',
+            content: `Based on the following text, generate ${numQuestions} quiz questions:\n\n${text}`
+          }
+        ],
+        response_format: {
+          type: 'json_schema',
+          json_schema: {
+            name: 'quiz_questions',
+            strict: true,
+            schema: {
+              type: 'object',
+              properties: {
+                questions: {
+                  type: 'array',
+                  items: {
+                    type: 'object',
+                    properties: {
+                      question: { type: 'string' },
+                      answers: {
+                        type: 'array',
+                        items: { type: 'string' }
+                      },
+                      correctIndex: { type: 'integer' }
+                    },
+                    required: ['question', 'answers', 'correctIndex'],
+                    additionalProperties: false
+                  }
+                }
+              },
+              required: ['questions'],
+              additionalProperties: false
+            }
+          }
+        },
+        temperature: 0.7
+      })
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error?.message || 'API request failed');
+    }
+
+    const data = await response.json();
+    const content = data.choices[0].message.content;
+    return { success: true, data: JSON.parse(content) };
+  } catch (error) {
+    console.error('OpenAI API error:', error);
+    return { success: false, error: error.message };
+  }
+});
+
 // Export library to zip file
 ipcMain.handle('export-library', async () => {
   const result = await dialog.showSaveDialog(mainWindow, {

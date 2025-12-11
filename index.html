@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' blob:; style-src 'self' 'unsafe-inline'; worker-src 'self' blob:; img-src 'self' data:;">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' blob:; style-src 'self' 'unsafe-inline'; worker-src 'self' blob:; img-src 'self' data:; connect-src 'self' https://api.openai.com;">
   <title>Study Hub</title>
   <link rel="stylesheet" href="styles.css">
 </head>
@@ -121,6 +121,23 @@
             <div id="no-books-message" class="no-books-message hidden">
               <p>No books in your library yet.</p>
             </div>
+          </div>
+          <div class="settings-section">
+            <h3>AI Quiz (OpenAI)</h3>
+            <p class="settings-description">Connect to OpenAI to generate quiz questions based on your daily reading. Your API key is stored locally and never shared.</p>
+            <div class="form-group">
+              <label for="openaiApiKey">OpenAI API Key</label>
+              <div class="api-key-input">
+                <input type="password" id="openaiApiKey" placeholder="sk-...">
+                <button id="toggleApiKeyVisibility" class="icon-btn small" title="Show/Hide">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+                    <circle cx="12" cy="12" r="3"></circle>
+                  </svg>
+                </button>
+              </div>
+            </div>
+            <button id="saveApiKeyBtn" class="secondary-btn">Save API Key</button>
           </div>
           <div class="settings-section">
             <h3>Backup & Transfer</h3>
@@ -343,6 +360,65 @@
             <button id="continueReadingBtn" class="secondary-btn">Continue Reading</button>
             <button id="closeReaderBtn" class="primary-btn">Done for Today</button>
           </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Quiz Offer Modal -->
+    <div id="quizOfferModal" class="modal">
+      <div class="modal-content modal-small">
+        <div class="modal-body completion-modal">
+          <div class="completion-icon quiz-icon">
+            <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="10"></circle>
+              <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path>
+              <line x1="12" y1="17" x2="12.01" y2="17"></line>
+            </svg>
+          </div>
+          <h3>Test your knowledge?</h3>
+          <p>Take a quick quiz on what you just read to reinforce your learning.</p>
+          <div class="completion-actions">
+            <button id="skipQuizBtn" class="secondary-btn">Skip</button>
+            <button id="startQuizBtn" class="primary-btn">Start Quiz</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Quiz Modal -->
+    <div id="quizModal" class="modal">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h3>Reading Quiz</h3>
+          <button class="modal-close" data-close-quiz>&times;</button>
+        </div>
+        <div class="modal-body">
+          <div id="quizLoading" class="quiz-loading">
+            <div class="loading-spinner"></div>
+            <p>Generating questions...</p>
+          </div>
+          <div id="quizContent" class="quiz-content hidden">
+            <div class="quiz-progress">
+              <span id="quizQuestionNum">Question 1</span> of <span id="quizTotalQuestions">5</span>
+            </div>
+            <div id="quizQuestion" class="quiz-question"></div>
+            <div id="quizAnswers" class="quiz-answers">
+              <!-- Answer buttons will be rendered here -->
+            </div>
+            <div id="quizFeedback" class="quiz-feedback hidden">
+              <p id="quizFeedbackText"></p>
+            </div>
+          </div>
+          <div id="quizResults" class="quiz-results hidden">
+            <div class="quiz-score">
+              <span id="quizScoreValue">0</span>/<span id="quizScoreTotal">5</span>
+            </div>
+            <p id="quizResultMessage"></p>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button id="quizNextBtn" class="primary-btn hidden">Next Question</button>
+          <button id="quizFinishBtn" class="primary-btn hidden">Finish</button>
         </div>
       </div>
     </div>

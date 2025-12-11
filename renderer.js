@@ -37,6 +37,13 @@ let speedReadingTimer = null;
 // Current session's daily goal (loaded from book data)
 let todayGoal = null;
 
+// Quiz state
+let quizQuestions = [];
+let currentQuizIndex = 0;
+let quizScore = 0;
+let readingSessionText = ''; // Accumulated text from pages read in this session
+let reviewQuestionCount = 0; // Number of review questions from the bank in current quiz
+
 // DOM Elements
 const elements = {
   // Views
@@ -147,7 +154,30 @@ const elements = {
   // Schedule modal
   scheduleModal: document.getElementById('scheduleModal'),
   scheduleModalTitle: document.getElementById('scheduleModalTitle'),
-  scheduleCalendar: document.getElementById('scheduleCalendar')
+  scheduleCalendar: document.getElementById('scheduleCalendar'),
+
+  // Quiz elements
+  openaiApiKey: document.getElementById('openaiApiKey'),
+  toggleApiKeyVisibility: document.getElementById('toggleApiKeyVisibility'),
+  saveApiKeyBtn: document.getElementById('saveApiKeyBtn'),
+  quizOfferModal: document.getElementById('quizOfferModal'),
+  skipQuizBtn: document.getElementById('skipQuizBtn'),
+  startQuizBtn: document.getElementById('startQuizBtn'),
+  quizModal: document.getElementById('quizModal'),
+  quizLoading: document.getElementById('quizLoading'),
+  quizContent: document.getElementById('quizContent'),
+  quizQuestionNum: document.getElementById('quizQuestionNum'),
+  quizTotalQuestions: document.getElementById('quizTotalQuestions'),
+  quizQuestion: document.getElementById('quizQuestion'),
+  quizAnswers: document.getElementById('quizAnswers'),
+  quizFeedback: document.getElementById('quizFeedback'),
+  quizFeedbackText: document.getElementById('quizFeedbackText'),
+  quizResults: document.getElementById('quizResults'),
+  quizScoreValue: document.getElementById('quizScoreValue'),
+  quizScoreTotal: document.getElementById('quizScoreTotal'),
+  quizResultMessage: document.getElementById('quizResultMessage'),
+  quizNextBtn: document.getElementById('quizNextBtn'),
+  quizFinishBtn: document.getElementById('quizFinishBtn')
 };
 
 // Initialize
@@ -180,6 +210,11 @@ async function migrateBookData() {
     // Ensure dailyGoals object exists
     if (!book.dailyGoals) {
       book.dailyGoals = {};
+      needsSave = true;
+    }
+    // Ensure questionBank array exists
+    if (!book.questionBank) {
+      book.questionBank = [];
       needsSave = true;
     }
   }
@@ -281,7 +316,7 @@ function setupEventListeners() {
   });
 
   // Reader
-  elements.backToLibrary.addEventListener('click', () => switchView('library'));
+  elements.backToLibrary.addEventListener('click', offerQuizOrExit);
   elements.prevPage.addEventListener('click', () => changePage(-1));
   elements.nextPage.addEventListener('click', () => changePage(1));
   elements.readerDarkMode.addEventListener('click', toggleReaderInvert);
@@ -327,11 +362,28 @@ function setupEventListeners() {
   elements.exportLibraryBtn.addEventListener('click', exportLibrary);
   elements.importLibraryBtn.addEventListener('click', importLibrary);
 
+  // OpenAI API Key
+  elements.toggleApiKeyVisibility.addEventListener('click', toggleApiKeyVisibility);
+  elements.saveApiKeyBtn.addEventListener('click', saveApiKey);
+  loadApiKey();
+
+  // Quiz modals
+  elements.skipQuizBtn.addEventListener('click', closeQuizOfferModal);
+  elements.startQuizBtn.addEventListener('click', startQuiz);
+  elements.quizNextBtn.addEventListener('click', nextQuizQuestion);
+  elements.quizFinishBtn.addEventListener('click', finishQuiz);
+  document.querySelectorAll('[data-close-quiz]').forEach(btn => {
+    btn.addEventListener('click', closeQuizModal);
+  });
+  elements.quizModal.addEventListener('click', (e) => {
+    if (e.target === elements.quizModal) closeQuizModal();
+  });
+
   // Daily complete modal
   elements.continueReadingBtn.addEventListener('click', closeDailyCompleteModal);
   elements.closeReaderBtn.addEventListener('click', () => {
     closeDailyCompleteModal();
-    switchView('library');
+    offerQuizOrExit();
   });
 
   // Keyboard navigation
@@ -1769,6 +1821,7 @@ async function createStudyPlan() {
     weekdaysOnly: elements.weekdaysOnly.checked,
     completedDays: [],
     dailyGoals: {},
+    questionBank: [],
     coverImage: coverImage
   };
 
@@ -2007,6 +2060,17 @@ async function changePage(delta) {
     const previousMax = currentBook.maxPageReached || 0;
     if (currentPageNum > previousMax) {
       currentBook.maxPageReached = currentPageNum;
+
+      // Accumulate text for quiz (only for new pages)
+      const pageText = await extractPageText(currentPageNum);
+      if (pageText) {
+        readingSessionText += '\n\n' + pageText;
+        // Limit accumulated text to avoid token limits (roughly 8000 words)
+        const words = readingSessionText.split(/\s+/);
+        if (words.length > 8000) {
+          readingSessionText = words.slice(-8000).join(' ');
+        }
+      }
     }
 
     await saveProgress();
@@ -2039,6 +2103,248 @@ async function saveProgress() {
     appData.books[bookIndex] = currentBook;
     await window.electronAPI.saveData(appData);
   }
+}
+
+// API Key Functions
+function toggleApiKeyVisibility() {
+  const input = elements.openaiApiKey;
+  if (input.type === 'password') {
+    input.type = 'text';
+  } else {
+    input.type = 'password';
+  }
+}
+
+function loadApiKey() {
+  if (appData.settings && appData.settings.openaiApiKey) {
+    elements.openaiApiKey.value = appData.settings.openaiApiKey;
+  }
+}
+
+async function saveApiKey() {
+  const apiKey = elements.openaiApiKey.value.trim();
+
+  if (!appData.settings) {
+    appData.settings = {};
+  }
+  appData.settings.openaiApiKey = apiKey;
+  await window.electronAPI.saveData(appData);
+
+  alert(apiKey ? 'API key saved!' : 'API key removed.');
+}
+
+// Quiz Functions
+function offerQuizOrExit() {
+  const apiKey = appData.settings?.openaiApiKey;
+
+  // Only offer quiz if:
+  // 1. API key is configured
+  // 2. User has read some text in this session
+  if (apiKey && readingSessionText.trim().length > 100) {
+    elements.quizOfferModal.classList.add('active');
+  } else {
+    exitReader();
+  }
+}
+
+function exitReader() {
+  // Reset reading session
+  readingSessionText = '';
+  switchView('library');
+}
+
+function closeQuizOfferModal() {
+  elements.quizOfferModal.classList.remove('active');
+  exitReader();
+}
+
+async function startQuiz() {
+  elements.quizOfferModal.classList.remove('active');
+  elements.quizModal.classList.add('active');
+
+  // Reset quiz state
+  quizQuestions = [];
+  currentQuizIndex = 0;
+  quizScore = 0;
+  reviewQuestionCount = 0;
+
+  // Show loading
+  elements.quizLoading.classList.remove('hidden');
+  elements.quizContent.classList.add('hidden');
+  elements.quizResults.classList.add('hidden');
+  elements.quizNextBtn.classList.add('hidden');
+  elements.quizFinishBtn.classList.add('hidden');
+
+  try {
+    const apiKey = appData.settings.openaiApiKey;
+    const result = await window.electronAPI.generateQuiz({
+      apiKey,
+      text: readingSessionText,
+      numQuestions: 5
+    });
+
+    if (result.success && result.data.questions) {
+      // Get new questions from API
+      const newQuestions = result.data.questions.map(q => ({
+        ...q,
+        isReview: false
+      }));
+
+      // Save new questions to the book's question bank
+      if (currentBook && currentBook.questionBank) {
+        currentBook.questionBank.push(...newQuestions.map(q => ({
+          question: q.question,
+          answers: q.answers,
+          correctIndex: q.correctIndex
+        })));
+        await saveProgress();
+      }
+
+      // Select up to 2 random review questions from the bank (excluding the ones we just added)
+      const reviewQuestions = selectReviewQuestions(newQuestions.length);
+      reviewQuestionCount = reviewQuestions.length;
+
+      // Combine: new questions first, then review questions
+      quizQuestions = [...newQuestions, ...reviewQuestions];
+
+      elements.quizTotalQuestions.textContent = quizQuestions.length;
+      showQuizQuestion();
+    } else {
+      throw new Error(result.error || 'Failed to generate questions');
+    }
+  } catch (error) {
+    console.error('Quiz generation error:', error);
+    alert(`Failed to generate quiz: ${error.message}`);
+    closeQuizModal();
+  }
+}
+
+// Select random review questions from the question bank
+function selectReviewQuestions(excludeLastN) {
+  if (!currentBook || !currentBook.questionBank) return [];
+
+  // Get questions excluding the ones we just added
+  const bankSize = currentBook.questionBank.length;
+  const availableQuestions = currentBook.questionBank.slice(0, bankSize - excludeLastN);
+
+  if (availableQuestions.length === 0) return [];
+
+  // Shuffle and pick up to 2 questions
+  const shuffled = [...availableQuestions].sort(() => Math.random() - 0.5);
+  const selected = shuffled.slice(0, Math.min(2, shuffled.length));
+
+  return selected.map(q => ({
+    ...q,
+    isReview: true
+  }));
+}
+
+function showQuizQuestion() {
+  elements.quizLoading.classList.add('hidden');
+  elements.quizContent.classList.remove('hidden');
+  elements.quizResults.classList.add('hidden');
+  elements.quizFeedback.classList.add('hidden');
+  elements.quizNextBtn.classList.add('hidden');
+  elements.quizFinishBtn.classList.add('hidden');
+
+  const question = quizQuestions[currentQuizIndex];
+  const questionLabel = question.isReview ? `Review Question ${currentQuizIndex + 1}` : `Question ${currentQuizIndex + 1}`;
+  elements.quizQuestionNum.textContent = questionLabel;
+  elements.quizQuestion.textContent = question.question;
+
+  // Add review badge if it's a review question
+  if (question.isReview) {
+    elements.quizQuestionNum.innerHTML = `${questionLabel} <span class="review-badge">From previous reading</span>`;
+  }
+
+  // Render answer buttons
+  elements.quizAnswers.innerHTML = '';
+  question.answers.forEach((answer, index) => {
+    const btn = document.createElement('button');
+    btn.className = 'quiz-answer-btn';
+    btn.textContent = answer;
+    btn.addEventListener('click', () => selectAnswer(index));
+    elements.quizAnswers.appendChild(btn);
+  });
+}
+
+function selectAnswer(selectedIndex) {
+  const question = quizQuestions[currentQuizIndex];
+  const buttons = elements.quizAnswers.querySelectorAll('.quiz-answer-btn');
+
+  // Disable all buttons
+  buttons.forEach(btn => btn.disabled = true);
+
+  // Mark correct and incorrect
+  buttons.forEach((btn, index) => {
+    if (index === question.correctIndex) {
+      btn.classList.add('correct');
+    } else if (index === selectedIndex) {
+      btn.classList.add('incorrect');
+    }
+  });
+
+  // Show feedback
+  const isCorrect = selectedIndex === question.correctIndex;
+  if (isCorrect) {
+    quizScore++;
+    elements.quizFeedbackText.textContent = 'Correct!';
+    elements.quizFeedback.className = 'quiz-feedback correct';
+  } else {
+    elements.quizFeedbackText.textContent = `Incorrect. The correct answer was: ${question.answers[question.correctIndex]}`;
+    elements.quizFeedback.className = 'quiz-feedback incorrect';
+  }
+  elements.quizFeedback.classList.remove('hidden');
+
+  // Show next/finish button
+  if (currentQuizIndex < quizQuestions.length - 1) {
+    elements.quizNextBtn.classList.remove('hidden');
+  } else {
+    elements.quizFinishBtn.classList.remove('hidden');
+  }
+}
+
+function nextQuizQuestion() {
+  currentQuizIndex++;
+  showQuizQuestion();
+}
+
+function showQuizResults() {
+  elements.quizContent.classList.add('hidden');
+  elements.quizResults.classList.remove('hidden');
+  elements.quizNextBtn.classList.add('hidden');
+  elements.quizFinishBtn.classList.remove('hidden');
+
+  elements.quizScoreValue.textContent = quizScore;
+  elements.quizScoreTotal.textContent = quizQuestions.length;
+
+  const percentage = Math.round((quizScore / quizQuestions.length) * 100);
+  if (percentage === 100) {
+    elements.quizResultMessage.textContent = 'Perfect! You really understood the material!';
+  } else if (percentage >= 80) {
+    elements.quizResultMessage.textContent = 'Great job! You have a solid understanding.';
+  } else if (percentage >= 60) {
+    elements.quizResultMessage.textContent = 'Good effort! Consider reviewing the material again.';
+  } else {
+    elements.quizResultMessage.textContent = 'You might want to re-read this section.';
+  }
+}
+
+// Handle finish button - shows results or closes modal
+function finishQuiz() {
+  // If we're still on a question, show results first
+  if (!elements.quizResults.classList.contains('hidden')) {
+    // Already showing results, close the modal
+    closeQuizModal();
+  } else {
+    // Show results screen
+    showQuizResults();
+  }
+}
+
+function closeQuizModal() {
+  elements.quizModal.classList.remove('active');
+  exitReader();
 }
 
 // Utility Functions

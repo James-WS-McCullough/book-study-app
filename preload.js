@@ -7,5 +7,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
   saveData: (data) => ipcRenderer.invoke('save-data', data),
   getFileName: (filePath) => ipcRenderer.invoke('get-file-name', filePath),
   exportLibrary: () => ipcRenderer.invoke('export-library'),
-  importLibrary: () => ipcRenderer.invoke('import-library')
+  importLibrary: () => ipcRenderer.invoke('import-library'),
+  generateQuiz: (options) => ipcRenderer.invoke('generate-quiz', options)
 });
