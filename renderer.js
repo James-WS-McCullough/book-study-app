@@ -26,6 +26,14 @@ let availableVoices = [];
 let configuredVoices = []; // User's configured voices with speeds
 let currentVoiceConfig = null; // Currently selected voice config for this page
 
+// Speed reading state
+let speedReadingVisible = false;
+let speedReadingActive = false;
+let speedReadingWPM = 300; // Words per minute (configurable)
+let speedReadingWords = [];
+let currentWordIndex = 0;
+let speedReadingTimer = null;
+
 // Current session's daily goal (loaded from book data)
 let todayGoal = null;
 
@@ -84,6 +92,25 @@ const elements = {
   audioStopBtn: document.getElementById('audioStopBtn'),
   audioProgressFill: document.getElementById('audioProgressFill'),
   currentVoiceName: document.getElementById('currentVoiceName'),
+
+  // Speed reading mode
+  toggleSpeedReadBtn: document.getElementById('toggleSpeedReadBtn'),
+  speedReadingPanel: document.getElementById('speedReadingPanel'),
+  wordBefore: document.getElementById('wordBefore'),
+  wordORP: document.getElementById('wordORP'),
+  wordAfter: document.getElementById('wordAfter'),
+  speedReadPlayPauseBtn: document.getElementById('speedReadPlayPauseBtn'),
+  speedReadPlayIcon: document.getElementById('speedReadPlayIcon'),
+  speedReadPauseIcon: document.getElementById('speedReadPauseIcon'),
+  speedReadRestartBtn: document.getElementById('speedReadRestartBtn'),
+  speedReadProgressFill: document.getElementById('speedReadProgressFill'),
+  speedReadWordCount: document.getElementById('speedReadWordCount'),
+  wpmDecrease: document.getElementById('wpmDecrease'),
+  wpmDisplay: document.getElementById('wpmDisplay'),
+  wpmIncrease: document.getElementById('wpmIncrease'),
+  speedReadingPreview: document.getElementById('speedReadingPreview'),
+  speedReadingPreviewCanvas: document.getElementById('speedReadingPreviewCanvas'),
+  previewPageNum: document.getElementById('previewPageNum'),
 
   // Voice configuration (settings)
   voiceSelectDropdown: document.getElementById('voiceSelectDropdown'),
@@ -262,6 +289,17 @@ function setupEventListeners() {
 
   // Voice configuration
   elements.addVoiceBtn.addEventListener('click', addConfiguredVoice);
+
+  // Speed reading mode
+  elements.toggleSpeedReadBtn.addEventListener('click', toggleSpeedReadingMode);
+  elements.speedReadPlayPauseBtn.addEventListener('click', toggleSpeedReadingPlayback);
+  elements.speedReadRestartBtn.addEventListener('click', restartSpeedReading);
+  elements.wpmDecrease.addEventListener('click', decreaseWPM);
+  elements.wpmIncrease.addEventListener('click', increaseWPM);
+  elements.speedReadingPreview.addEventListener('click', toggleSpeedReadingMode);
+
+  // Load speed reading settings
+  loadSpeedReadingSettings();
 
   // Load available voices
   loadVoices();
@@ -522,6 +560,258 @@ function updatePlayPauseIcon() {
   elements.audioPauseIcon.classList.toggle('hidden', !isPlaying);
 }
 
+// ===== SPEED READING MODE =====
+
+// Calculate Optimal Recognition Point (ORP) for a word
+// Based on Spritz/RSVP research: ORP is slightly left of center
+// Typically around 30-35% from the start for optimal recognition
+function calculateORP(word) {
+  const len = word.length;
+  if (len <= 1) return 0;
+  if (len <= 3) return 0;
+  if (len <= 5) return 1;
+  if (len <= 9) return 2;
+  if (len <= 13) return 3;
+  return 4; // For very long words
+}
+
+// Calculate display duration for a word based on WPM and word characteristics
+function calculateWordDuration(word) {
+  const baseInterval = 60000 / speedReadingWPM; // Base ms per word
+
+  // Add extra time for punctuation (sentence/clause endings)
+  const punctuationDelay = /[.!?]$/.test(word) ? baseInterval * 0.8 :
+                           /[,;:]$/.test(word) ? baseInterval * 0.3 : 0;
+
+  // Add slight delay for longer words
+  const lengthBonus = word.length > 8 ? baseInterval * 0.2 : 0;
+
+  return baseInterval + punctuationDelay + lengthBonus;
+}
+
+// Display a word with ORP highlighting and proper alignment
+function displayWord(word) {
+  const wordElement = document.getElementById('speedReadingWord');
+
+  if (!word) {
+    elements.wordBefore.textContent = '';
+    elements.wordORP.textContent = '';
+    elements.wordAfter.textContent = '';
+    wordElement.style.left = '50%';
+    wordElement.style.transform = 'translateX(-50%)';
+    return;
+  }
+
+  const orpIndex = calculateORP(word);
+
+  elements.wordBefore.textContent = word.substring(0, orpIndex);
+  elements.wordORP.textContent = word.charAt(orpIndex);
+  elements.wordAfter.textContent = word.substring(orpIndex + 1);
+
+  // After setting content, calculate offset to center the ORP character
+  // Use requestAnimationFrame to ensure DOM has updated
+  requestAnimationFrame(() => {
+    const orpElement = elements.wordORP;
+    const wordRect = wordElement.getBoundingClientRect();
+    const orpRect = orpElement.getBoundingClientRect();
+
+    // Calculate where ORP center is relative to word element
+    const orpCenterInWord = (orpRect.left - wordRect.left) + (orpRect.width / 2);
+    const wordWidth = wordRect.width;
+
+    // We want orpCenterInWord to be at 50% of container
+    // So we offset by: 50% - orpCenterInWord
+    const container = wordElement.parentElement;
+    const containerWidth = container.getBoundingClientRect().width;
+    const targetCenter = containerWidth / 2;
+
+    // Set position so ORP aligns with center
+    wordElement.style.left = `${targetCenter - orpCenterInWord}px`;
+    wordElement.style.transform = 'none';
+  });
+}
+
+// Update speed reading progress
+function updateSpeedReadingProgress() {
+  const total = speedReadingWords.length;
+  const current = currentWordIndex;
+  const percent = total > 0 ? (current / total) * 100 : 0;
+
+  elements.speedReadProgressFill.style.width = `${percent}%`;
+  elements.speedReadWordCount.textContent = `${current} / ${total}`;
+}
+
+// Toggle speed reading mode visibility
+async function toggleSpeedReadingMode() {
+  speedReadingVisible = !speedReadingVisible;
+  elements.speedReadingPanel.classList.toggle('hidden', !speedReadingVisible);
+  elements.toggleSpeedReadBtn.classList.toggle('ruler-active', speedReadingVisible);
+
+  if (speedReadingVisible) {
+    // Extract text if not already done
+    if (!currentPageText) {
+      currentPageText = await extractPageText(currentPageNum);
+    }
+
+    // Parse text into words
+    speedReadingWords = currentPageText
+      .split(/\s+/)
+      .filter(word => word.length > 0);
+
+    currentWordIndex = 0;
+    speedReadingActive = false;
+
+    // Display first word
+    if (speedReadingWords.length > 0) {
+      displayWord(speedReadingWords[0]);
+    } else {
+      displayWord('');
+      elements.wordORP.textContent = 'No text';
+    }
+
+    updateSpeedReadingProgress();
+    updateSpeedReadPlayPauseIcon();
+
+    // Render page preview thumbnail
+    renderSpeedReadingPreview();
+  } else {
+    // Stop playback when closing
+    stopSpeedReading();
+  }
+}
+
+// Toggle speed reading playback
+function toggleSpeedReadingPlayback() {
+  if (speedReadingActive) {
+    pauseSpeedReading();
+  } else {
+    startSpeedReading();
+  }
+}
+
+// Start speed reading
+function startSpeedReading() {
+  if (speedReadingWords.length === 0) return;
+  if (currentWordIndex >= speedReadingWords.length) {
+    // Restart if at end
+    currentWordIndex = 0;
+  }
+
+  speedReadingActive = true;
+  updateSpeedReadPlayPauseIcon();
+  scheduleNextWord();
+}
+
+// Pause speed reading
+function pauseSpeedReading() {
+  speedReadingActive = false;
+  if (speedReadingTimer) {
+    clearTimeout(speedReadingTimer);
+    speedReadingTimer = null;
+  }
+  updateSpeedReadPlayPauseIcon();
+}
+
+// Stop speed reading completely
+function stopSpeedReading() {
+  speedReadingActive = false;
+  if (speedReadingTimer) {
+    clearTimeout(speedReadingTimer);
+    speedReadingTimer = null;
+  }
+  updateSpeedReadPlayPauseIcon();
+}
+
+// Restart speed reading from beginning
+function restartSpeedReading() {
+  pauseSpeedReading();
+  currentWordIndex = 0;
+  if (speedReadingWords.length > 0) {
+    displayWord(speedReadingWords[0]);
+  }
+  updateSpeedReadingProgress();
+}
+
+// Schedule the next word display
+function scheduleNextWord() {
+  if (!speedReadingActive || currentWordIndex >= speedReadingWords.length) {
+    if (currentWordIndex >= speedReadingWords.length) {
+      // Reached end
+      speedReadingActive = false;
+      updateSpeedReadPlayPauseIcon();
+    }
+    return;
+  }
+
+  const word = speedReadingWords[currentWordIndex];
+  displayWord(word);
+  updateSpeedReadingProgress();
+
+  const duration = calculateWordDuration(word);
+  currentWordIndex++;
+
+  speedReadingTimer = setTimeout(scheduleNextWord, duration);
+}
+
+// Update play/pause icon
+function updateSpeedReadPlayPauseIcon() {
+  elements.speedReadPlayIcon.classList.toggle('hidden', speedReadingActive);
+  elements.speedReadPauseIcon.classList.toggle('hidden', !speedReadingActive);
+}
+
+// Update WPM display
+function updateWPMDisplay() {
+  elements.wpmDisplay.textContent = `${speedReadingWPM} WPM`;
+  // Save to localStorage
+  localStorage.setItem('speedReadingWPM', speedReadingWPM.toString());
+}
+
+// Increase WPM
+function increaseWPM() {
+  speedReadingWPM = Math.min(1000, speedReadingWPM + 50);
+  updateWPMDisplay();
+}
+
+// Decrease WPM
+function decreaseWPM() {
+  speedReadingWPM = Math.max(50, speedReadingWPM - 50);
+  updateWPMDisplay();
+}
+
+// Load saved WPM setting
+function loadSpeedReadingSettings() {
+  const savedWPM = localStorage.getItem('speedReadingWPM');
+  if (savedWPM) {
+    speedReadingWPM = parseInt(savedWPM, 10);
+    updateWPMDisplay();
+  }
+}
+
+// Render page preview thumbnail for speed reading mode
+async function renderSpeedReadingPreview() {
+  if (!currentPdf) return;
+
+  const page = await currentPdf.getPage(currentPageNum);
+  const canvas = elements.speedReadingPreviewCanvas;
+  const ctx = canvas.getContext('2d');
+
+  // Target width for thumbnail
+  const targetWidth = 134; // 150px container - 16px padding
+  const viewport = page.getViewport({ scale: 1 });
+  const scale = targetWidth / viewport.width;
+  const scaledViewport = page.getViewport({ scale });
+
+  canvas.width = scaledViewport.width;
+  canvas.height = scaledViewport.height;
+
+  await page.render({
+    canvasContext: ctx,
+    viewport: scaledViewport
+  }).promise;
+
+  elements.previewPageNum.textContent = currentPageNum;
+}
+
 // Load available voices
 function loadVoices() {
   const allVoices = speechSynthesis.getVoices();
@@ -750,6 +1040,12 @@ function switchView(viewName) {
     audioModeVisible = false;
     elements.audioControls.classList.add('hidden');
     elements.toggleAudioBtn.classList.remove('ruler-active');
+
+    // Reset speed reading mode
+    stopSpeedReading();
+    speedReadingVisible = false;
+    elements.speedReadingPanel.classList.add('hidden');
+    elements.toggleSpeedReadBtn.classList.remove('ruler-active');
   }
 
   if (viewName === 'library') {
@@ -1251,12 +1547,27 @@ async function changePage(delta) {
     currentPageText = '';
     currentVoiceConfig = null; // Reset so a new random voice is selected
     stopAudio();
+    stopSpeedReading();
 
     // Update text mode if visible
     if (textModeVisible) {
       elements.extractedText.textContent = 'Extracting text...';
       currentPageText = await extractPageText(currentPageNum);
       elements.extractedText.textContent = currentPageText || 'No text found on this page.';
+    }
+
+    // Update speed reading mode if visible
+    if (speedReadingVisible) {
+      currentPageText = await extractPageText(currentPageNum);
+      speedReadingWords = currentPageText
+        .split(/\s+/)
+        .filter(word => word.length > 0);
+      currentWordIndex = 0;
+      if (speedReadingWords.length > 0) {
+        displayWord(speedReadingWords[0]);
+      }
+      updateSpeedReadingProgress();
+      renderSpeedReadingPreview();
     }
 
     // Update current page (for resume)
@@ -1348,6 +1659,8 @@ function handleKeyboard(e) {
     toggleTextMode();
   } else if (e.key === 'a' || e.key === 'A') {
     toggleAudioMode();
+  } else if (e.key === 's' || e.key === 'S') {
+    toggleSpeedReadingMode();
   } else if (e.key === '+' || e.key === '=') {
     changeZoom(0.25);
   } else if (e.key === '-' || e.key === '_') {

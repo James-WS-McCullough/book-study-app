@@ -194,6 +194,12 @@
                 <path d="M19.07 4.93a10 10 0 0 1 0 14.14"></path>
               </svg>
             </button>
+            <button id="toggleSpeedReadBtn" class="icon-btn" title="Toggle Speed Reading (S)">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="12" cy="12" r="10"></circle>
+                <polyline points="12 6 12 12 16 14"></polyline>
+              </svg>
+            </button>
             <button id="readerDarkMode" class="icon-btn" title="Toggle Dark Mode">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
@@ -209,6 +215,49 @@
           <!-- Text Mode Panel -->
           <div id="textModePanel" class="text-mode-panel hidden">
             <div id="extractedText" class="extracted-text"></div>
+          </div>
+          <!-- Speed Reading Panel -->
+          <div id="speedReadingPanel" class="speed-reading-panel hidden">
+            <div class="speed-reading-display">
+              <div class="speed-reading-focus-line"></div>
+              <div class="speed-reading-word-container">
+                <div id="speedReadingWord" class="speed-reading-word">
+                  <span id="wordBefore" class="word-before"></span><span id="wordORP" class="word-orp"></span><span id="wordAfter" class="word-after"></span>
+                </div>
+              </div>
+              <div id="speedReadingPreview" class="speed-reading-preview" title="Click to exit speed reading">
+                <canvas id="speedReadingPreviewCanvas"></canvas>
+                <div class="preview-label">Page <span id="previewPageNum">1</span></div>
+              </div>
+            </div>
+            <div class="speed-reading-controls">
+              <button id="speedReadPlayPauseBtn" class="speed-read-btn" title="Play/Pause">
+                <svg id="speedReadPlayIcon" width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
+                  <polygon points="5 3 19 12 5 21 5 3"></polygon>
+                </svg>
+                <svg id="speedReadPauseIcon" width="24" height="24" viewBox="0 0 24 24" fill="currentColor" class="hidden">
+                  <rect x="6" y="4" width="4" height="16"></rect>
+                  <rect x="14" y="4" width="4" height="16"></rect>
+                </svg>
+              </button>
+              <button id="speedReadRestartBtn" class="speed-read-btn" title="Restart">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <polyline points="1 4 1 10 7 10"></polyline>
+                  <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"></path>
+                </svg>
+              </button>
+              <div class="speed-reading-progress">
+                <div id="speedReadProgressBar" class="speed-read-progress-bar">
+                  <div id="speedReadProgressFill" class="speed-read-progress-fill"></div>
+                </div>
+                <span id="speedReadWordCount" class="speed-read-word-count">0 / 0</span>
+              </div>
+              <div class="speed-reading-wpm">
+                <button id="wpmDecrease" class="wpm-btn">-</button>
+                <span id="wpmDisplay" class="wpm-display">300 WPM</span>
+                <button id="wpmIncrease" class="wpm-btn">+</button>
+              </div>
+            </div>
           </div>
         </div>
         <!-- Audio Controls Bar -->
