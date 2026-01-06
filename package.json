@@ -20,6 +20,8 @@
     "electron-builder": "^24.9.1"
   },
   "dependencies": {
+    "archiver": "^7.0.1",
+    "extract-zip": "^2.0.1",
     "pdfjs-dist": "^4.0.379"
   },
   "build": {
