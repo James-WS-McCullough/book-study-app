@@ -15,7 +15,7 @@ let totalPages = 0;
 let pendingPdfPath = null;
 let pendingPdfPageCount = 0;
 let currentZoom = 1.0;
-let rulerVisible = false;
+let rulerMode = 0; // 0 = off, 1 = normal (line in middle), 2 = bottom-line (line at bottom of clear area)
 let textModeVisible = false;
 let audioModeVisible = false;
 let currentPageText = '';
@@ -349,16 +349,21 @@ function handleWheelZoom(e) {
 
 // Update ruler position based on mouse
 function updateRulerPosition(e) {
-  if (!rulerVisible) return;
+  if (rulerMode === 0) return;
   elements.readingRuler.style.top = `${e.clientY}px`;
 }
 
-// Toggle reading ruler
+// Toggle reading ruler (cycles: off -> normal -> bottom-line -> off)
 function toggleRuler() {
-  rulerVisible = !rulerVisible;
-  elements.readingRuler.classList.toggle('hidden', !rulerVisible);
-  elements.pdfContainer.classList.toggle('ruler-active', rulerVisible);
-  elements.toggleRulerBtn.classList.toggle('ruler-active', rulerVisible);
+  rulerMode = (rulerMode + 1) % 3;
+
+  const isVisible = rulerMode !== 0;
+  elements.readingRuler.classList.toggle('hidden', !isVisible);
+  elements.pdfContainer.classList.toggle('ruler-active', isVisible);
+  elements.toggleRulerBtn.classList.toggle('ruler-active', isVisible);
+
+  // Toggle bottom-line mode class
+  elements.readingRuler.classList.toggle('bottom-line', rulerMode === 2);
 }
 
 // Extract text from current page
@@ -1127,8 +1132,9 @@ function switchView(viewName) {
 
   // Hide ruler and reset modes when leaving reader
   if (viewName !== 'reader') {
-    rulerVisible = false;
+    rulerMode = 0;
     elements.readingRuler.classList.add('hidden');
+    elements.readingRuler.classList.remove('bottom-line');
     elements.pdfContainer.classList.remove('ruler-active');
     elements.toggleRulerBtn.classList.remove('ruler-active');
 

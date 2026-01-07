@@ -594,6 +594,11 @@ body {
   height: 2000px;
 }
 
+/* Bottom-line ruler mode: line at bottom of clear area */
+.reading-ruler.bottom-line {
+  align-items: flex-end;
+}
+
 /* Hide cursor over PDF when ruler is active */
 .pdf-container.ruler-active {
   cursor: none;
